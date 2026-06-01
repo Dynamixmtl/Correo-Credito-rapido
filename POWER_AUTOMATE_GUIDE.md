@@ -8,7 +8,11 @@
 - **Paramètres** :
   - Dossier : `Inbox`
   - Filtre sujet : `CreditRapide`
-  - From : `acostasalcedo.d@csdm.qc.ca`
+  - *(Ne pas filtrer par expéditeur exact — accepter tout @csdm.qc.ca)*
+
+> **Note :** Le connecteur Outlook ne supporte pas le filtre par domaine natif. Ajouter une condition après le déclencheur :
+> - `triggerBody()?['from']` **contient** `@csdm.qc.ca`
+> - Si la condition est **fausse** → terminer le flux (action "Terminate")
 
 ---
 
@@ -31,11 +35,11 @@ Ou utiliser l'action **"Split text"** avec le séparateur `;`.
 ### Étape 2 – Appeler l'API pour créer la demande
 - **Action** : HTTP
 - **Méthode** : POST
-- **URI** : `https://creditrapide.azurewebsites.net/api/requests`
+- **URI** : `https://cr-dynamixmtl.azurewebsites.net/api/requests`
 - **En-têtes** :
   ```
   Content-Type: application/json
-  x-api-key: <votre API_SECRET_KEY>
+  x-api-key: k4pSxJXAPcRrKqeZ8W7j9O0tfQaghHlvUoEDuBd6
   ```
 - **Corps** :
   ```json
@@ -43,9 +47,12 @@ Ou utiliser l'action **"Split text"** avec le séparateur `;`.
     "nomDocument": "@{variables('nomDocument')}",
     "montant": "@{variables('montant')}",
     "montantRetenu": "@{variables('montantRetenu')}",
-    "recipientEmail": "acostasalcedo.d@csdm.qc.ca"
+    "senderEmail": "@{triggerBody()?['from']}",
+    "recipientEmail": "@{triggerBody()?['from']}"
   }
   ```
+  > `senderEmail` = qui a envoyé le courriel (domaine @csdm.qc.ca)  
+  > `recipientEmail` = à qui envoyer la notification de décision (même personne)
 
 ---
 

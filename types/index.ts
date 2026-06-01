@@ -9,4 +9,5 @@ export interface CreditRequest {
   createdAt: string;
   processedAt?: string;
   recipientEmail: string;
+  senderEmail?: string;
 }

@@ -110,7 +110,7 @@ export default async function AdminPage() {
                         : '—'}
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs">
-                      {req.recipientEmail}
+                      {req.senderEmail || req.recipientEmail || '—'}
                     </td>
                     <td className="px-4 py-3">
                       <a

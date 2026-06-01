@@ -20,6 +20,7 @@ export async function createRequest(data: {
   montant: string;
   montantRetenu: string;
   recipientEmail: string;
+  senderEmail?: string;
 }): Promise<CreditRequest> {
   const client = getClient();
   await ensureTable();
@@ -36,6 +37,7 @@ export async function createRequest(data: {
     status: 'pending',
     createdAt,
     recipientEmail: data.recipientEmail,
+    senderEmail: data.senderEmail ?? '',
   });
 
   return {
@@ -46,6 +48,7 @@ export async function createRequest(data: {
     status: 'pending',
     createdAt,
     recipientEmail: data.recipientEmail,
+    senderEmail: data.senderEmail,
   };
 }
 
@@ -84,6 +87,7 @@ export async function getAllRequests(): Promise<CreditRequest[]> {
       createdAt: entity.createdAt as string,
       processedAt: entity.processedAt as string | undefined,
       recipientEmail: entity.recipientEmail as string,
+      senderEmail: entity.senderEmail as string | undefined,
     });
   }
   return results.sort(

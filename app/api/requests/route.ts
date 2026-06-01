@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRequest } from '@/lib/storage';
 
 // Called by Power Automate when a CreditRapide email is received.
-// Body: { nomDocument, montant, montantRetenu, recipientEmail }
+// Body: { nomDocument, montant, montantRetenu, recipientEmail, senderEmail }
+// - senderEmail: expediteur du courriel original (@csdm.qc.ca)
+// - recipientEmail: destinataire de la notification de decision
 // Header: x-api-key: <API_SECRET_KEY>
 export async function POST(request: NextRequest) {
   const apiKey = request.headers.get('x-api-key');
@@ -17,7 +19,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Corps JSON invalide' }, { status: 400 });
   }
 
-  const { nomDocument, montant, montantRetenu, recipientEmail } = body;
+  const { nomDocument, montant, montantRetenu, recipientEmail, senderEmail } = body;
 
   if (!nomDocument || !montant || !montantRetenu) {
     return NextResponse.json(
@@ -26,11 +28,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Valider que l'expediteur provient du domaine @csdm.qc.ca
+  if (senderEmail && !senderEmail.toLowerCase().endsWith('@csdm.qc.ca')) {
+    return NextResponse.json(
+      { error: 'Domaine expediteur non autorise. Seuls les courriels @csdm.qc.ca sont acceptes.' },
+      { status: 403 }
+    );
+  }
+
   const creditRequest = await createRequest({
     nomDocument,
     montant,
     montantRetenu,
     recipientEmail: recipientEmail || process.env.NOTIFICATION_RECIPIENT || '',
+    senderEmail: senderEmail || '',
   });
 
   const approvalUrl = `${process.env.NEXT_PUBLIC_APP_URL}/approval/${creditRequest.id}`;
