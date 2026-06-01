@@ -68,6 +68,29 @@ export async function getRequest(id: string): Promise<CreditRequest | null> {
   }
 }
 
+export async function getAllRequests(): Promise<CreditRequest[]> {
+  const client = getClient();
+  const results: CreditRequest[] = [];
+  const iter = client.listEntities({
+    queryOptions: { filter: "PartitionKey eq 'requests'" },
+  });
+  for await (const entity of iter) {
+    results.push({
+      id: entity.rowKey as string,
+      nomDocument: entity.nomDocument as string,
+      montant: entity.montant as string,
+      montantRetenu: entity.montantRetenu as string,
+      status: entity.status as RequestStatus,
+      createdAt: entity.createdAt as string,
+      processedAt: entity.processedAt as string | undefined,
+      recipientEmail: entity.recipientEmail as string,
+    });
+  }
+  return results.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
 export async function updateStatus(
   id: string,
   status: 'approved' | 'rejected'
