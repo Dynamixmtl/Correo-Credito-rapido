@@ -72,9 +72,12 @@ export async function getUnreadCreditRapideEmails(): Promise<GraphMessage[]> {
   );
   const select = 'id,subject,body,bodyPreview,from,receivedDateTime,isRead';
   const data = await graphRequest<{ value: GraphMessage[] }>(
-    `/users/${MAILBOX}/messages?$filter=${filter}&$select=${select}&$top=50&$orderby=receivedDateTime asc`
+    `/users/${MAILBOX}/messages?$filter=${filter}&$select=${select}&$top=50`
   );
-  return data.value ?? [];
+  const messages = data.value ?? [];
+  return messages.sort(
+    (a, b) => new Date(a.receivedDateTime).getTime() - new Date(b.receivedDateTime).getTime()
+  );
 }
 
 export async function markAsRead(messageId: string): Promise<void> {
