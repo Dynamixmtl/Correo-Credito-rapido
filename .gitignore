@@ -6,6 +6,7 @@ node_modules/
 # Production build
 .next/
 out/
+deploy.zip
 
 # Environment variables
 .env
