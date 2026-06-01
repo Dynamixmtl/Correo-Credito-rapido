@@ -73,6 +73,7 @@ export async function getRequest(id: string): Promise<CreditRequest | null> {
 
 export async function getAllRequests(): Promise<CreditRequest[]> {
   const client = getClient();
+  await ensureTable();
   const results: CreditRequest[] = [];
   const iter = client.listEntities({
     queryOptions: { filter: "PartitionKey eq 'requests'" },
