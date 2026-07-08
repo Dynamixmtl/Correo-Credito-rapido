@@ -9,11 +9,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     MicrosoftEntraID({
       clientId: process.env.AZURE_AD_CLIENT_ID!,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-      issuer: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/v2.0`,
+      // "organizations" permite cuentas de cualquier tenant de trabajo/escuela
+      issuer: "https://login.microsoftonline.com/organizations/v2.0",
       authorization: {
         params: {
-          scope:
-            "openid profile email User.Read People.Read Mail.Send Sites.ReadWrite.All Files.ReadWrite",
+          scope: "openid profile email User.Read",
         },
       },
     }),
