@@ -44,13 +44,7 @@ jobs:
       - name: Build Next.js app
         env:
           NEXTAUTH_URL: https://${{ env.APP_NAME }}.azurewebsites.net
-          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-          AZURE_AD_CLIENT_ID: ${{ secrets.AZURE_AD_CLIENT_ID }}
-          AZURE_AD_CLIENT_SECRET: ${{ secrets.AZURE_AD_CLIENT_SECRET }}
-          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          WEBHOOK_ADMIN_EMAIL: ${{ secrets.WEBHOOK_ADMIN_EMAIL }}
-          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: npm run build
 
       # ── 7. Preparar artefacto de deploy ──────────────────────────────────────

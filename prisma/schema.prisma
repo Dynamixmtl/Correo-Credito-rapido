@@ -7,66 +7,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
-
-enum EstatusFactura {
-  OUVERT
-  EN_COURS
-  APPROUVE
-  REFUSE
-  PAYE
-}
-
-enum EstatusAprobador {
-  EN_COURS
-  APPROUVE
-  REFUSE
-  VACIO
-}
-
-enum TipoDocumento {
-  PRINCIPAL
-  CREDITO
-  ADJUNTO
-}
-
-// ─── Modelos principales ──────────────────────────────────────────────────────
-
 model Factura {
-  id            String @id @default(cuid())
-
-  // ── Identificación ──
-  nombreFactura String  // No. de factura (ej: "FAC-2024-001")
-  noProjet      String  // No. de proyecto
-  srmProjet     String? // Código SRM del proyecto
-
-  // ── Relaciones catálogo ──
-  ecoleId       String
-  ecole         Ecole       @relation(fields: [ecoleId], references: [id])
-  fournisseurId String
-  fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id])
-
-  // ── Datos financieros ──
-  montant           Decimal  @db.Decimal(12, 2)
-  dateFacture       DateTime @db.Date
-  dateSaisie        DateTime @db.Date @default(now())
-  dateLimite        DateTime? @db.Date
-  indiceComptable   String?
-  affectationCredit String?
-
-  // ── Estado general ──
-  etatFacture EstatusFactura @default(OUVERT)
-
-  // ── Aprobadores (email de Azure AD) ──
-  responsableEmail       String
-  cpEmail                String?
-  regisseurEmail         String?
-  coordoEmail            String?
-  dirAdjointeEmail       String?
-  directionGeneraleEmail String?
-  cooEmail               String?
-
-  // ── Nombres de aprobadores (cache para mostrar sin llamar Graph API) ──
+  id                      String                @id @default(cuid())
+  nombreFactura           String
+  noProjet                String
+  srmProjet               String?
+  ecoleId                 String
+  fournisseurId           String
+  montant                 Decimal               @db.Decimal(12, 2)
+  dateFacture             DateTime              @db.Date
+  dateSaisie              DateTime              @default(now()) @db.Date
+  dateLimite              DateTime?             @db.Date
+  indiceComptable         String?
+  affectationCredit       String?
+  etatFacture             EstatusFactura        @default(OUVERT)
+  responsableEmail        String
+  cpEmail                 String?
+  regisseurEmail          String?
+  coordoEmail             String?
+  dirAdjointeEmail        String?
+  directionGeneraleEmail  String?
+  cooEmail                String?
   responsableNombre       String?
   cpNombre                String?
   regisseurNombre         String?
@@ -74,36 +35,28 @@ model Factura {
   dirAdjointeNombre       String?
   directionGeneraleNombre String?
   cooNombre               String?
-
-  // ── Estado por aprobador ──
-  etatCP        EstatusAprobador @default(VACIO)
-  etatRegisseur EstatusAprobador @default(VACIO)
-  etatCoordo    EstatusAprobador @default(VACIO)
-  etatDirAdj    EstatusAprobador @default(VACIO)
-  etatDirGen    EstatusAprobador @default(VACIO)
-
-  // ── Verificaciones (checkboxes) ──
-  repartitionRequise   Boolean @default(false) // Répartition S9 requise
-  raisonSocialConforme Boolean @default(false)
-  dixPourcentVerifier  Boolean @default(false) // 10% à vérifier
-  fourHomologue        Boolean @default(false) // Fournisseur homologué
-  paimentRapide        Boolean @default(false)
-  affectationCreditCheck Boolean @default(false)
-
-  // ── Comentarios ──
+  etatCP                  EstatusAprobador      @default(VACIO)
+  etatRegisseur           EstatusAprobador      @default(VACIO)
+  etatCoordo              EstatusAprobador      @default(VACIO)
+  etatDirAdj              EstatusAprobador      @default(VACIO)
+  etatDirGen              EstatusAprobador      @default(VACIO)
+  repartitionRequise      Boolean               @default(false)
+  raisonSocialConforme    Boolean               @default(false)
+  dixPourcentVerifier     Boolean               @default(false)
+  fourHomologue           Boolean               @default(false)
+  paimentRapide           Boolean               @default(false)
+  affectationCreditCheck  Boolean               @default(false)
   commentairesResponsable String?
   commentairesAdmin       String?
-
-  // ── Metadatos internos ──
-  bureauId  Int?
-  bureau    Bureau? @relation(fields: [bureauId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // ── Relaciones ──
-  documentos          Documento[]
-  adjuntosTemporal    AdjuntoTemporal[]
-  historialAprobacion HistorialAprobacion[]
+  bureauId                Int?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  adjuntosTemporal        AdjuntoTemporal[]
+  documentos              Documento[]
+  bureau                  Bureau?               @relation(fields: [bureauId], references: [id])
+  ecole                   Ecole                 @relation(fields: [ecoleId], references: [id])
+  fournisseur             Fournisseur           @relation(fields: [fournisseurId], references: [id])
+  historialAprobacion     HistorialAprobacion[]
 
   @@index([etatFacture])
   @@index([responsableEmail])
@@ -145,13 +98,13 @@ model Ecole {
 model Documento {
   id          String        @id @default(cuid())
   facturaId   String
-  factura     Factura       @relation(fields: [facturaId], references: [id], onDelete: Cascade)
   nombre      String
-  contenido   Bytes
   contentType String        @default("application/octet-stream")
   tamano      Int
   tipo        TipoDocumento @default(PRINCIPAL)
   createdAt   DateTime      @default(now())
+  contenido   Bytes
+  factura     Factura       @relation(fields: [facturaId], references: [id], onDelete: Cascade)
 
   @@index([facturaId])
   @@index([tipo])
@@ -161,12 +114,12 @@ model AdjuntoTemporal {
   id          String   @id @default(cuid())
   idSolicitud String
   facturaId   String?
-  factura     Factura? @relation(fields: [facturaId], references: [id], onDelete: SetNull)
   nombre      String
-  contenido   Bytes
   contentType String   @default("application/octet-stream")
   tamano      Int
   createdAt   DateTime @default(now())
+  contenido   Bytes
+  factura     Factura? @relation(fields: [facturaId], references: [id])
 
   @@index([idSolicitud])
   @@index([facturaId])
@@ -175,13 +128,13 @@ model AdjuntoTemporal {
 model HistorialAprobacion {
   id              String           @id @default(cuid())
   facturaId       String
-  factura         Factura          @relation(fields: [facturaId], references: [id], onDelete: Cascade)
-  rolAprobador    String           // "cp" | "regisseur" | "coordo" | "dirAdj" | "dirGen" | "coo"
+  rolAprobador    String
   emailAprobador  String
   nombreAprobador String?
   decision        EstatusAprobador
   comentario      String?
   createdAt       DateTime         @default(now())
+  factura         Factura          @relation(fields: [facturaId], references: [id], onDelete: Cascade)
 
   @@index([facturaId])
   @@index([emailAprobador])
@@ -199,4 +152,71 @@ model Version {
   version String
   fecha   DateTime @default(now())
   notas   String?
+}
+
+// ─── NextAuth v5 — requerido por @auth/prisma-adapter ────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum EstatusFactura {
+  OUVERT
+  EN_COURS
+  APPROUVE
+  REFUSE
+  PAYE
+}
+
+enum EstatusAprobador {
+  EN_COURS
+  APPROUVE
+  REFUSE
+  VACIO
+}
+
+enum TipoDocumento {
+  PRINCIPAL
+  CREDITO
+  ADJUNTO
 }
