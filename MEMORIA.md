@@ -79,10 +79,15 @@ paso, costos ~$133 CAD/mes), `.azure/provision.sh`.
 
 ## Lecciones técnicas
 
-- **`trustHost: true` es obligatorio en App Service.** Sin él, NextAuth v5 lanza
-  `UntrustedHost` y **todos** los endpoints `/api/auth/*` devuelven 500 con un mensaje genérico
-  de "server configuration" que no dice nada. Confirmado en el log el 2026-07-19; fue la causa
-  real del login roto y los 4 commits de julio atacaron la causa equivocada.
+- **`AUTH_TRUST_HOST=true` es obligatorio en App Service — y el flag de código NO basta.**
+  Sin confiar en el host, NextAuth v5 lanza `UntrustedHost` y **todos** los endpoints
+  `/api/auth/*` devuelven 500 con un mensaje genérico de "server configuration" que no dice
+  nada. Confirmado en el log el 2026-07-19; fue la causa real del login roto, y los 4 commits
+  de julio atacaron la causa equivocada.
+  **Gotcha caro:** poner `trustHost: true` en el config de `auth.ts` **no funciona** en
+  `next-auth@5.0.0-beta.25` — el `setEnvDefaults` interno sobrescribe el valor. Se desplegó con
+  el flag y siguió fallando; solo se arregló al añadir el **app setting `AUTH_TRUST_HOST=true`**.
+  → **Nunca borrar esa variable del App Service** pensando que el código la cubre.
   **Lección de método:** ante ese mensaje genérico, ir directo al log del servidor
   (`az webapp log tail` mientras se golpea `/api/auth/csrf`) en vez de iterar a ciegas.
   `/api/auth/csrf` es el mejor canario: no toca Entra ID, así que si falla el problema es de
@@ -94,6 +99,15 @@ paso, costos ~$133 CAD/mes), `.azure/provision.sh`.
 - **PrismaAdapter rompía el login** con error genérico `Configuration`. Se eliminó y se pasó a
   sesión `jwt` pura. Las tablas `User/Account/Session/VerificationToken` siguen en el schema
   pero **ya no se usan**.
+- **La org de GitHub se renombró de `Dynamixmtl` a `Dynamixmtlinc`** (repo:
+  `Dynamixmtlinc/Correo-Credito-rapido` — nombre heredado del proyecto Credit Rapide). Eso
+  rompió el OIDC del CI con `AADSTS700213: No matching federated identity record`. Se añadió
+  la credencial federada `github-main-branch-dynamixmtlinc` con subject
+  `repo:Dynamixmtlinc/Correo-Credito-rapido:ref:refs/heads/main` (2026-07-19). Las dos viejas
+  con el subject `Dynamixmtl/` siguen ahí, inertes.
+- **Los app settings del App Service se gestionan a mano, el CI no los toca.** El workflow solo
+  despliega el bundle. Cualquier variable nueva hay que ponerla con
+  `az webapp config appsettings set` o el deploy pasará en verde y la app fallará en runtime.
 - En el workflow de Azure OIDC, declarar `environment: production` **rompe el OIDC subject**
   (el subject del token cambia y la federated credential no matchea). Se quitó.
 - Scopes de Entra ID reducidos a `openid profile email User.Read`; pedir más provocaba
@@ -104,14 +118,14 @@ paso, costos ~$133 CAD/mes), `.azure/provision.sh`.
 ## Pendientes / preguntas abiertas
 
 Prioridad alta:
-1. **Login en producción: causa raíz encontrada y corregida en local, FALTA DESPLEGAR.**
-   (2026-07-19) Estaba roto: `UntrustedHost`. Fix = `trustHost: true` en `src/lib/auth.ts`,
-   typecheck en verde, **sin commitear ni desplegar todavía**. Ver
-   [`Aprendizaje.md`](Aprendizaje.md) para el diagnóstico completo. Tras desplegar hay que
-   revalidar `/api/auth/csrf` → 200 y hacer el login real en navegador, **que nunca se ha
-   ejercido** (el flujo OIDC contra Entra ID sigue sin probarse de punta a punta).
-   Riesgo siguiente: el redirect URI registrado en Entra ID puede apuntar al nombre viejo
-   `app-approbations-factures` en vez de `cr-dynamixmtl` → daría `AADSTS50011`.
+1. ~~Login en producción roto~~ → **RESUELTO el 2026-07-19.** Causa: `UntrustedHost`. Fix:
+   app setting `AUTH_TRUST_HOST=true` (+ `trustHost` en código, que solo no basta).
+   Validado: `/api/auth/csrf`, `/api/auth/providers`, `/api/auth/session` y `/` → **200**.
+   Redirect URI verificado en Entra ID (app `app-facturacion`, `ab66ed5f-…`) y coincide exacto
+   con el callback de NextAuth → **no habrá `AADSTS50011`**. Diagnóstico completo en
+   [`Aprendizaje.md`](Aprendizaje.md).
+   **Único punto sin confirmar:** el login humano real en navegador (flujo OIDC completo con
+   credenciales). Todo lo verificable por máquina está en verde.
 2. **Migrar del tenant `dynamixmtl` al tenant real de CSDM**: nuevo registro de app, redirect
    URI, consentimiento de admin, y actualizar `tenant-id`/`client-id` en
    `.github/workflows/azure-deploy.yml` (hoy apunta a `0f0db576-…` = dynamixmtl).
