@@ -30,16 +30,23 @@ Excepción al stack estándar: **este proyecto va sobre Azure, no Railway**.
   (intranet CSDM, solo alcanzable desde el servidor).
 - **Data layer cliente**: TanStack Query + TanStack Table; formularios con react-hook-form + zod.
 
-## Estado actual (2026-07-19)
+## Estado actual (2026-07-20)
 
-- Funcionalidad núcleo **implementada**: alta/edición de facturas, galería + filtros +
-  paginación, detalle, subida y descarga de documentos, circuito de aprobación con historial,
-  composición de correos, ingesta de facturas por correo vía webhook de Graph.
-- El trabajo reciente (últimos 4 commits) fue **depurar el login en Azure**, no features.
-  El repo quedó en `144fd89 fix: ajouter AUTH_SECRET explicite`.
-- **Nunca verificado en esta memoria si el login ya funciona en producción** — es lo primero
-  que hay que comprobar al retomar.
-- Working tree: solo ruido de fin de línea en `next-env.d.ts` / `tsconfig.json` (CRLF↔LF), más
+**El circuito completo está vivo en producción por primera vez.**
+
+- ✅ **Login** funcionando (`AUTH_TRUST_HOST`), confirmado por el usuario en navegador.
+- ✅ **Ingesta por correo** reescrita: los datos salen del PDF adjunto, no del cuerpo
+  (`certificat-parser.ts` + `procesar-certificat.ts`).
+- ✅ **Suscripción de Graph activa** desde el 2026-07-20 — la primera que existe, tras arreglar
+  la validación por POST. **Expira el 2026-07-23** (ver Pendientes nº3).
+- ✅ **Backfill hecho**: las 2 facturas históricas del buzón (`CR08-07_31477`, `21junCR_30895`)
+  están cargadas. Script reutilizable en `scripts/backfill-courriels.mts`.
+- ✅ **Página pública del proveedor** `/facture/{nº}` en producción, con respuesta única.
+- ✅ **Admin**: filtro "Fournisseur : en attente / déjà répondu" + columna Réponse.
+- ⏳ **Nunca ejercido de punta a punta con un correo nuevo real** — la suscripción se creó
+  después de los correos existentes. Falta ver entrar uno solo.
+- Catálogos `Ecole`/`Fournisseur` **vacíos**; las facturas entran sin esos datos.
+- Working tree: ruido de fin de línea en `next-env.d.ts` / `tsconfig.json` (CRLF↔LF), más
   `deploy_pkg/` y `deploy_pkg.zip` sin trackear (artefactos de un deploy manual del 2026-07-08).
 
 ## Arquitectura y módulos
@@ -48,9 +55,15 @@ Excepción al stack estándar: **este proyecto va sobre Azure, no Railway**.
 src/app/api/          facturas (CRUD), aprobar, documentos, adjuntos-temporal,
                       escuelas, proveedores, usuarios/buscar, correo,
                       webhook/correo (ingesta), webhook/suscripcion (crear/renovar)
+src/app/facture/      [numero]/ PÁGINA PÚBLICA del proveedor (sin sesión)
+src/app/api/facture/  [numero]/repondre (POST público, respuesta del proveedor)
 src/lib/              auth.ts, api-helpers.ts (requireAuth), prisma.ts, db-storage.ts,
-                      graph.ts (usuario), graph-app.ts (app-only), email-parser.ts,
+                      graph.ts (usuario), graph-app.ts (app-only),
+                      certificat-parser.ts (PDF → datos, por posición),
+                      procesar-certificat.ts (PDF → Factura + respuesta proveedor),
+                      email-parser.ts (OBSOLETO: formato que nunca existió),
                       azure-blob.ts (NO USADO), utils.ts (calcularEstatusGeneral)
+scripts/              backfill-courriels.mts (procesa correos ya recibidos)
 src/components/       facturas/ (Form, Detalle, Galeria, FiltrosBarra, EmailComposer),
                       shared/ (UserSearchCombo, FileUpload, EstadoBadge, AprobadorChip)
 prisma/schema.prisma  Factura, Fournisseur, Ecole, Documento, AdjuntoTemporal,
@@ -77,6 +90,26 @@ paso, costos ~$133 CAD/mes), `.azure/provision.sh`.
 - El tenant Azure actualmente configurado en CI es **dynamixmtl** (el de desarrollo/Deyby),
   no el de CSDM. Ver Pendientes.
 
+## Flujo de la factura (confirmado con el cliente el 2026-07-19)
+
+```
+1. acostasalcedo ──correo + CertificatCR.pdf──> admin@dynamixmtl.com
+2. la app parsea el PDF y crea/actualiza la factura
+3. acostasalcedo ──enlace escrito a mano──> proveedor
+      ruta SIEMPRE igual: /facture/{nº de factura}
+4. el proveedor abre la ruta pública, ve la factura y responde
+5. la app ──correo con la respuesta──> acostasalcedo  ← ÚNICO correo que emite
+6. acostasalcedo reenvía al proveedor si corresponde
+```
+
+- **La app nunca escribe a los aprobadores ni al proveedor.** Solo a acostasalcedo, y solo
+  cuando el proveedor ya respondió. Por eso **no hacen falta sus emails** ni tokens de acceso.
+- **La URL es deducible a propósito**: acostasalcedo la construye sin esperar a la app, incluso
+  antes de que la factura exista (la página muestra "pas encore disponible" en ese caso).
+- Compensaciones ante esa URL adivinable: **una sola respuesta por factura** (409 después),
+  IP guardada como rastro, comentario escapado en el correo, rechazo sin motivo denegado.
+- El proveedor solo **aprueba o rechaza con comentario** — nada de los checks internos.
+
 ## Lecciones técnicas
 
 - **`AUTH_TRUST_HOST=true` es obligatorio en App Service — y el flag de código NO basta.**
@@ -99,6 +132,26 @@ paso, costos ~$133 CAD/mes), `.azure/provision.sh`.
 - **PrismaAdapter rompía el login** con error genérico `Configuration`. Se eliminó y se pasó a
   sesión `jwt` pura. Las tablas `User/Account/Session/VerificationToken` siguen en el schema
   pero **ya no se usan**.
+- **Graph valida el webhook por `POST`, no por `GET`** — con `?validationToken=` en la query y
+  **sin cuerpo JSON**. El handler `POST` original parseaba el body y devolvía `{ok:true}`, así
+  que el token nunca se devolvía y **ninguna suscripción pudo crearse jamás** (de ahí los 0
+  registros durante meses). Corregido el 2026-07-20: el `POST` responde el token antes de tocar
+  el body. Al depurar esto, el mensaje de Graph es `ValidationError: Subscription validation
+  request to notification URL did not return the expected validation token`.
+- **Los datos de la factura vienen en el PDF adjunto, no en el correo.** `CertificatCR.pdf` lo
+  genera Chromium (Skia/PDF) con capa de texto estable; se parsea **por posición (x/y)** en
+  `src/lib/certificat-parser.ts`. Por orden de líneas NO funciona: un campo vacío (p. ej.
+  `ÉCOLE`) hace desaparecer su línea de valor y desalinea todo en silencio.
+- **Hacer un campo nullable en Prisma no propaga al tipo escrito a mano.** Al volver
+  `ecoleId`/`fournisseurId` opcionales, `FacturaResumen` seguía declarando `ecole` como no-nulo:
+  el typecheck pasaba en verde y 4 accesos (`f.ecole.nombre`) habrían reventado en runtime.
+  Tras cambiar la nulabilidad en el schema, revisar los tipos de `src/types/index.ts` a mano.
+- **El deploy no limpia `wwwroot`**: quedan carpetas de la app anterior (Credit Rapide) en
+  `.next/server/app` (`admin`, `poll`, `requests`, `approval`, `confirmation`). No estorban
+  porque Next enruta por su manifiesto, pero conviene limpiarlas algún día.
+- **Tras desplegar, el contenedor sirve el código viejo ~1 minuto.** Al verificar un fix en
+  producción hay que reintentar hasta ver el comportamiento nuevo, o se lee un falso negativo
+  (me pasó con la validación del webhook y con la ruta `/facture`).
 - **La org de GitHub se renombró de `Dynamixmtl` a `Dynamixmtlinc`** (repo:
   `Dynamixmtlinc/Correo-Credito-rapido` — nombre heredado del proyecto Credit Rapide). Eso
   rompió el OIDC del CI con `AADSTS700213: No matching federated identity record`. Se añadió
@@ -129,20 +182,27 @@ Prioridad alta:
 2. **Migrar del tenant `dynamixmtl` al tenant real de CSDM**: nuevo registro de app, redirect
    URI, consentimiento de admin, y actualizar `tenant-id`/`client-id` en
    `.github/workflows/azure-deploy.yml` (hoy apunta a `0f0db576-…` = dynamixmtl).
-3. **Renovación automática de la suscripción de Graph**: las suscripciones a correo expiran en
-   ~3 días. Existe `PATCH /api/webhook/suscripcion` pero **nadie lo llama**. Falta un
-   cron/timer (Azure Function o GitHub Action programada) o la ingesta se apagará sola.
-4. **Datos semilla ficticios**: `prisma/seed.ts` tiene écoles y fournisseurs inventados. Hay
-   que cargar el catálogo real de CSDM antes de producción.
+3. ⚠️ **URGENTE — Renovación de la suscripción de Graph.** Suscripción creada el 2026-07-20
+   (`7491690f-cc00-40c6-a8ab-b62f5cdbe702`), **expira el 2026-07-23T11:05Z**. Las suscripciones
+   de correo duran ~3 días (4230 min). Existe `PATCH /api/webhook/suscripcion` pero **nadie lo
+   llama**: sin un cron (GitHub Action programada o Azure Function) **la ingesta se apaga sola
+   el 23 de julio**. Es el pendiente más urgente del proyecto.
+4. **Datos semilla ficticios / catálogos vacíos**: `prisma/seed.ts` tiene écoles y fournisseurs
+   inventados y **nunca se ejecutó** — las tablas `Ecole` y `Fournisseur` están vacías. Como el
+   PDF tampoco trae esos campos hoy, las facturas entran con `ecoleId`/`fournisseurId` en null.
+   Hay que cargar el catálogo real de CSDM y decidir quién completa esos datos.
+5. **`montant` sigue siendo obligatorio** en el schema. Si un PDF llega sin importe, la ingesta
+   lo guarda como **0** y lo avisa en el correo de confirmación. Aceptable por ahora (los PDFs
+   reales sí lo traen), pero es una trampa esperando.
 
 Prioridad media:
-5. Limpiar el schema: quitar `User/Account/Session/VerificationToken` (huérfanas tras eliminar
+6. Limpiar el schema: quitar `User/Account/Session/VerificationToken` (huérfanas tras eliminar
    PrismaAdapter) y decidir si se borra `src/lib/azure-blob.ts` o se migra a Blob.
-6. Estrategia de migraciones: hoy `prisma/migrations/` está gitignoreado. Decidir si se versiona
+7. Estrategia de migraciones: hoy `prisma/migrations/` está gitignoreado. Decidir si se versiona
    y se añade `migrate deploy` al CI, o se documenta `db push` como el método oficial.
-7. Sacar del repo `deploy_pkg/` y `deploy_pkg.zip` (24 MB, artefactos de deploy manual) —
+8. Sacar del repo `deploy_pkg/` y `deploy_pkg.zip` (24 MB, artefactos de deploy manual) —
    añadirlos al `.gitignore`.
-8. `src/app/api/webhook/correo/route.ts` no valida firma más allá de `clientState`; revisar si
+9. `src/app/api/webhook/correo/route.ts` no valida firma más allá de `clientState`; revisar si
    basta para el criterio de seguridad del cliente.
 
 Preguntas abiertas para el cliente/Deyby:
