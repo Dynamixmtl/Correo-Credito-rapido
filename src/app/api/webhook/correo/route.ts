@@ -9,16 +9,24 @@ import { procesarCertificat } from "@/lib/procesar-certificat";
 // Solo se procesan correos de este remitente autorizado
 const REMITENTE_AUTORIZADO = "acostasalcedo.d@csdm.qc.ca";
 
-// GET — Graph API llama esto para validar la suscripción
+/**
+ * Devuelve el token de validación tal cual, en texto plano.
+ * Graph exige status 200 + `text/plain` + el token en el cuerpo, en menos de 10 s.
+ */
+function respuestaValidacion(token: string) {
+  return new NextResponse(token, {
+    status: 200,
+    headers: { "Content-Type": "text/plain" },
+  });
+}
+
+// GET — se conserva por comodidad para probar el endpoint a mano.
 export async function GET(req: NextRequest) {
   const validationToken = req.nextUrl.searchParams.get("validationToken");
   if (!validationToken) {
     return new NextResponse("validationToken manquant", { status: 400 });
   }
-  return new NextResponse(validationToken, {
-    status: 200,
-    headers: { "Content-Type": "text/plain" },
-  });
+  return respuestaValidacion(validationToken);
 }
 
 interface GraphNotification {
@@ -29,6 +37,12 @@ interface GraphNotification {
 
 // POST — Graph API notifica un nuevo correo en el inbox de admin
 export async function POST(req: NextRequest) {
+  // Al crear o renovar una suscripción, Graph valida el endpoint con un **POST**
+  // que lleva `?validationToken=` y **sin** cuerpo JSON. Hay que responderlo antes
+  // de intentar leer el body, o la suscripción nunca llega a crearse.
+  const validationToken = req.nextUrl.searchParams.get("validationToken");
+  if (validationToken) return respuestaValidacion(validationToken);
+
   const body = await req.json().catch(() => null);
   if (!body?.value?.length) {
     return NextResponse.json({ ok: true });
