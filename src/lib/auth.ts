@@ -26,14 +26,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, account }) {
+    async jwt({ token, account, profile }) {
       if (account) {
         token.accessToken = account.access_token;
+      }
+      // Entra ID solo emite el claim `email` si el usuario tiene el atributo
+      // `mail` poblado o si se declara como optional claim. Sin él, la sesión
+      // llega con `user.email` vacío y `requireAuth()` devuelve 401 en TODAS las
+      // rutas API aunque el usuario esté correctamente autenticado.
+      // Se cae a `preferred_username` / `upn`, que sí vienen siempre.
+      if (profile && !token.email) {
+        const p = profile as { email?: string; preferred_username?: string; upn?: string };
+        token.email = p.email ?? p.preferred_username ?? p.upn;
       }
       return token;
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken as string;
+      if (session.user && !session.user.email && token.email) {
+        session.user.email = token.email;
+      }
       return session;
     },
   },

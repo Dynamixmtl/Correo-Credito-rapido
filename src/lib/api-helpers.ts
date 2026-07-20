@@ -10,6 +10,13 @@ export async function requireAuth(): Promise<
 > {
   const session = await auth();
   if (!session?.user?.email) {
+    // Distinguir "sin sesión" de "sesión válida pero sin email" — el segundo caso
+    // devuelve el mismo 401 mudo y es indistinguible desde el cliente.
+    console.warn(
+      session
+        ? `[requireAuth] session sans email (name=${session.user?.name ?? "?"}) — claim email absent d'Entra ID`
+        : "[requireAuth] aucune session"
+    );
     return {
       session: null,
       error: NextResponse.json({ error: "Non authentifié" }, { status: 401 }),
