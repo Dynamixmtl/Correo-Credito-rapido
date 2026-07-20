@@ -1,15 +1,62 @@
 "use client";
 
+import { useState } from "react";
 import { formatMonto, formatDate, calcularEdadDias, getAprobadores, cn } from "@/lib/utils";
 import { EstadoFacturaBadge } from "@/components/shared/EstadoBadge";
 import { AprobadoresList } from "@/components/shared/AprobadorChip";
 import type { FacturaResumen } from "@/types";
-import { MessageSquare, Zap, ChevronRight, Clock, Check, X } from "lucide-react";
+import { MessageSquare, Zap, ChevronRight, Clock, Check, X, Link2 } from "lucide-react";
 
 interface FacturaGaleriaProps {
   facturas: FacturaResumen[];
   onSelect: (factura: FacturaResumen) => void;
   selectedId?: string | null;
+}
+
+/**
+ * Copia el enlace público de la factura para enviárselo al proveedor.
+ * La ruta es determinista (`/facture/{nº}`), así que se arma en el cliente sin
+ * pedir nada al servidor.
+ */
+function CopierLienButton({ nombreFactura }: { nombreFactura: string }) {
+  const [copie, setCopie] = useState(false);
+
+  async function copier(e: React.MouseEvent) {
+    // Sin esto, el clic también selecciona la fila y abre el panel de detalle.
+    e.stopPropagation();
+
+    const url = `${window.location.origin}/facture/${encodeURIComponent(nombreFactura)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // navigator.clipboard no existe fuera de contextos seguros (o si el
+      // usuario deniega el permiso): se recurre al método antiguo.
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    setCopie(true);
+    setTimeout(() => setCopie(false), 1800);
+  }
+
+  return (
+    <button
+      onClick={copier}
+      title={copie ? "Lien copié" : "Copier le lien pour le fournisseur"}
+      aria-label="Copier le lien de la facture"
+      className={cn(
+        "p-1.5 rounded transition-colors",
+        copie ? "text-green-600 bg-green-50" : "text-gray-400 hover:text-csdm-blue hover:bg-blue-50"
+      )}
+    >
+      {copie ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />}
+    </button>
+  );
 }
 
 /** Estado de la respuesta del proveedor en la página pública. */
@@ -66,6 +113,7 @@ export function FacturaGaleria({ facturas, onSelect, selectedId }: FacturaGaleri
             <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Approbateurs</th>
             <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Réponse</th>
             <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">État</th>
+            <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Lien</th>
             <th className="px-4 py-3 w-8" />
           </tr>
         </thead>
@@ -122,6 +170,9 @@ export function FacturaGaleria({ facturas, onSelect, selectedId }: FacturaGaleri
                 </td>
                 <td className="px-4 py-3">
                   <EstadoFacturaBadge estado={f.etatFacture} />
+                </td>
+                <td className="px-4 py-3">
+                  <CopierLienButton nombreFactura={f.nombreFactura} />
                 </td>
                 <td className="px-4 py-3">
                   <ChevronRight className="w-4 h-4 text-gray-400" />
