@@ -38,7 +38,10 @@ Excepción al stack estándar: **este proyecto va sobre Azure, no Railway**.
 - ✅ **Ingesta por correo** reescrita: los datos salen del PDF adjunto, no del cuerpo
   (`certificat-parser.ts` + `procesar-certificat.ts`).
 - ✅ **Suscripción de Graph activa** desde el 2026-07-20 — la primera que existe, tras arreglar
-  la validación por POST. **Expira el 2026-07-23** (ver Pendientes nº3).
+  la validación por POST. **Se renueva sola** con un workflow diario (Pendientes nº3).
+- ✅ **Login usable de verdad**: el fallback del claim `email` desbloqueó todas las rutas API
+  (antes daban 401 con sesión válida). Confirmado por el usuario: ya ve las facturas.
+- ✅ **Botón "copier le lien"** en la galería: copia `/facture/{nº}` para pasárselo al proveedor.
 - ✅ **Backfill hecho**: las 2 facturas históricas del buzón (`CR08-07_31477`, `21junCR_30895`)
   están cargadas. Script reutilizable en `scripts/backfill-courriels.mts`.
 - ✅ **Página pública del proveedor** `/facture/{nº}` en producción, con respuesta única.
@@ -132,6 +135,16 @@ paso, costos ~$133 CAD/mes), `.azure/provision.sh`.
 - **PrismaAdapter rompía el login** con error genérico `Configuration`. Se eliminó y se pasó a
   sesión `jwt` pura. Las tablas `User/Account/Session/VerificationToken` siguen en el schema
   pero **ya no se usan**.
+- **Entra ID no siempre emite el claim `email`.** Solo lo manda si el usuario tiene el atributo
+  `mail` poblado o si se declara como *optional claim* (en `app-facturacion`, `optionalClaims`
+  es **null**). Como `requireAuth()` exige `session.user.email`, el usuario entraba bien —su
+  nombre salía en el header— pero **todas** las rutas API devolvían 401, y la UI lo mostraba
+  como "0 facture(s)" en vez de un error. Corregido el 2026-07-20 con fallback a
+  `preferred_username` / `upn` en el callback `jwt`.
+  **Gotcha:** el callback solo rellena el email **al iniciar sesión**, así que los JWT ya
+  emitidos siguen rotos → **hay que cerrar sesión y volver a entrar** tras desplegar el fix.
+- **La UI se traga los errores de la API**: `data?.total ?? 0` convierte un 401/500 en
+  "0 facture(s)". Cuesta muchísimo diagnosticar. **Pendiente**: mostrar el error real.
 - **Graph valida el webhook por `POST`, no por `GET`** — con `?validationToken=` en la query y
   **sin cuerpo JSON**. El handler `POST` original parseaba el body y devolvía `{ok:true}`, así
   que el token nunca se devolvía y **ninguna suscripción pudo crearse jamás** (de ahí los 0
@@ -182,11 +195,14 @@ Prioridad alta:
 2. **Migrar del tenant `dynamixmtl` al tenant real de CSDM**: nuevo registro de app, redirect
    URI, consentimiento de admin, y actualizar `tenant-id`/`client-id` en
    `.github/workflows/azure-deploy.yml` (hoy apunta a `0f0db576-…` = dynamixmtl).
-3. ⚠️ **URGENTE — Renovación de la suscripción de Graph.** Suscripción creada el 2026-07-20
-   (`7491690f-cc00-40c6-a8ab-b62f5cdbe702`), **expira el 2026-07-23T11:05Z**. Las suscripciones
-   de correo duran ~3 días (4230 min). Existe `PATCH /api/webhook/suscripcion` pero **nadie lo
-   llama**: sin un cron (GitHub Action programada o Azure Function) **la ingesta se apaga sola
-   el 23 de julio**. Es el pendiente más urgente del proyecto.
+3. ~~Renovación de la suscripción de Graph~~ → **RESUELTO el 2026-07-20.** Workflow
+   `.github/workflows/renouveler-souscription.yml`, diario a las 06:00 UTC + manual. Lee las
+   credenciales de los app settings por OIDC (sigue sin secrets en GitHub) y ejecuta
+   `scripts/renouveler-souscription.mjs`, que es **autocurativo**: si la suscripción expiró o
+   se borró, la recrea; y elimina duplicadas sobre el mismo webhook (procesarían cada correo
+   dos veces). Probado en local y en GitHub Actions.
+   ⚠️ **Vigilar:** GitHub **desactiva los workflows programados tras 60 días sin actividad** en
+   el repo. Si el proyecto queda quieto, la renovación muere en silencio y con ella la ingesta.
 4. **Datos semilla ficticios / catálogos vacíos**: `prisma/seed.ts` tiene écoles y fournisseurs
    inventados y **nunca se ejecutó** — las tablas `Ecole` y `Fournisseur` están vacías. Como el
    PDF tampoco trae esos campos hoy, las facturas entran con `ecoleId`/`fournisseurId` en null.
